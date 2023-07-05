@@ -1,4 +1,4 @@
-# Python Script Documentation
+#KGW Project
 
 This script performs several data processing steps, including reading data, filtering a dataframe based on various conditions, and summarizing results. It leverages several Python libraries such as pandas, pyreadstat, pyarrow, and numpy.
 
