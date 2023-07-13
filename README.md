@@ -14,11 +14,11 @@ Before executing the script, ensure you have the following:
 The script first checks if a parquet file 'NPDB2301.parquet' already exists. If it doesn't, it reads an SPSS file 'NPDB2301.POR' using `pyreadstat.read_por`, converts it to a parquet file using `pyarrow`, and writes it to 'NPDB2301.parquet'. If 'NPDB2301.parquet' does exist, it simply reads the file. Parquet files are faster to read and are more efficient for storage, so this step could significantly improve performance if the data is being read multiple times.
 
 
-`initialdFFilter`
+`iinitialPractitionerFilter`
     
     This function takes in our inital DataFrame and filters it to return practitioners who have at least one report of a certain type, either in a specific state or with a license in a specific state.
 
-`filterSet`
+`filterData`
 
     This method filters a DataFrame for specific report types and practitioners within a specific dataset. It takes a DataFrame, a dataset (which is another DataFrame that contains practitioners), and a list of report types as input. It first filters the DataFrame for practitioners in the given dataset and then filters the result further for specific report types.
 
@@ -26,7 +26,7 @@ The script first checks if a parquet file 'NPDB2301.parquet' already exists. If 
 
     This function creates a table with specific columns and sorting from a given filtered DataFrame. It takes a state and a DataFrame as input. The function generates several new columns based on conditions and manipulations of the existing columns. Then it performs various sorts and filters. Finally, it groups the DataFrame by certain columns and performs additional transformations, resulting in a final table which is returned.
 
-`occurenceCount`
+`practitionerOccurence`
 
     This method counts the occurrences of how many doctors had state licensure violations in the specified state first or not in another state then came to the specified state first. It takes a DataFrame as input and returns a Series object which contains the counts of each state order.
 
@@ -38,11 +38,11 @@ In the main execution part of the script, several states, practitioners, and rep
 
 This script includes tests for validating the functionality of some of its core functions. The tests are contained in a separate file test_KGW.py within the test directory.
 
-`test_initialdFFilter`
+`test_initialPractitionerFilter`
 
     This test validates the function initialdFFilter. The purpose of this function is to generate a 'state' column and to select practitioners based on specific conditions. The test creates a sample DataFrame, applies the function to it, and compares the resulting DataFrame to the expected DataFrame.
 
-`test_filterSet`
+`test_filterData`
 
     This test is designed to verify the function filterSet. The function filters a DataFrame based on specific report types and practitioners. The test creates a sample DataFrame and a dataset, applies the function, and compares the resulting DataFrame to an expected DataFrame.
 

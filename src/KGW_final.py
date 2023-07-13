@@ -6,7 +6,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import numpy as np
 
-# df, meta = prs.read_por("NpdbPublicUseDataSpss/NPDB2301.POR")
+
+
 
 if not os.path.isfile('NPDB2301.parquet'):
     df, meta = prs.read_por("NpdbPublicUseDataSpss/NPDB2301.POR")
@@ -19,35 +20,54 @@ else:
     df = table.to_pandas()
 
 
-def initialdFFilter(state: str, dataframe, practitioners: list, reptype):
+def initialPractitionerFilter(state: str, dataframe, practitioners: list, reptype, basis):
     """
-    Filters a dataframe for specific doctors and report types in a specified state.
+    Filters a dataframe based on the specified parameters to obtain records of particular practitioners 
+    who have specific report types and are practicing in a specified state, excluding those with a certain basis code. 
+
+    The function processes as follows:
+
+    1. Filters for the given list of practitioners.
+    2. Filters for practitioners who have at least one of the specified report types.
+    3. Generates a 'state' column, assigning the practitioner's state based on the 'LICNSTAT', 'WORKSTAT', or 'HOMESTAT' fields.
+    4. Excludes practitioners with the specified basis code.
+    5. Further filters practitioners who are practicing in the specified state.
 
     Args:
-        state (str): The state to filter by.
-        dataframe (pd.DataFrame): The dataframe to filter.
-        practitioners (list): The practitioners to filter by.
-        reptype (list): The report types to filter by.
+        state (str): The target state to filter practitioners by.
+        dataframe (pd.DataFrame): The source dataframe containing practitioners' records.
+        practitioners (list): A list of practitioner fields to filter by.
+        reptype (list): A list of report types to filter by.
+        basis (str): The basis code to filter out.
 
     Returns:
-        pd.DataFrame: The filtered dataframe.
+        pd.DataFrame: The dataframe containing records of the filtered practitioners.
     """
-
+  
     # Filter for doctors
     doctors = dataframe[dataframe['LICNFELD'].isin(practitioners)]
 
     # we want to filter for individuals that have at least 1 license report
     doctors = doctors[doctors["REPTYPE"].isin(reptype)]
 
+    # filter out basis saction code 39
+    # the .any checks any row against each of specified columns
+    
     # Select practitioners with at least one report for a given state
     # Rewrite as a for loop for each state
     # Notice that the states have blanks, not NAs
     doctors['state'] = doctors.apply(lambda row: row['LICNSTAT'] if row['LICNSTAT'] != "" else
     (row['WORKSTAT'] if row['WORKSTAT'] != "" else
      (row['HOMESTAT'] if row['HOMESTAT'] != "" else None)), axis=1)
+    
+    # Filter out basis saction code 39
+    filter_columns = ['BASISCD1', 'BASISCD2', 'BASISCD3', 'BASISCD4', 'BASISCD5']
+    for column in filter_columns:
+        doctors = doctors[doctors[column] != basis]
 
     doctors_in_state = doctors[(doctors['state'] == state) | (doctors['LICNSTAT'] == state)]
 
+    
     return doctors_in_state
 
 
@@ -57,40 +77,66 @@ def initialdFFilter(state: str, dataframe, practitioners: list, reptype):
 # - pd.concat().drop_duplicates(keep=False) is used to find the difference between two dataframes
 # - del is used to remove variables
 
-def filterSet(dataframe, dataset, reptype):
+def filterData(dataframe, dataset, reptype, basis):
     """
-    Filters a dataframe for specific report types and practitioners within a specific dataset.
+    Filters a dataframe based on the specified parameters to obtain records of practitioners 
+    within a specific dataset who have specific report types and excludes those with a certain basis code.
+
+    The function processes as follows:
+
+    1. Filters practitioners in the dataframe who are also present in the provided dataset.
+    2. Excludes practitioners with the specified basis code.
+    3. Further filters for practitioners who have at least one of the specified report types.
 
     Args:
-        dataframe (pd.DataFrame): The dataframe to filter.
+        dataframe (pd.DataFrame): The source dataframe containing practitioners' records.
         dataset (pd.DataFrame): The dataset that contains the practitioners to filter by.
-        reptype (list): The report types to filter by.
+        reptype (list): A list of report types to filter by.
+        basis (str): The basis code to filter out.
 
     Returns:
-        pd.DataFrame: The filtered dataframe.
+        pd.DataFrame: The dataframe containing records of the filtered practitioners.
     """
 
+    
     # Filter whole data set for the specified state doctors
     doctors_state_plus = dataframe[dataframe['PRACTNUM'].isin(dataset['PRACTNUM'])]
-
+    
+    # Filter out basis saction code 39
+    filter_columns = ['BASISCD1', 'BASISCD2', 'BASISCD3', 'BASISCD4', 'BASISCD5']
+    for column in filter_columns:
+        doctors_state_plus = doctors_state_plus[doctors_state_plus[column] != basis]
     # This is a specific filter for only the 301 and 302 license action rows rather than just doctors that have 301
     # and 302 and something else
     doctors_state_plus = doctors_state_plus[doctors_state_plus['REPTYPE'].isin(reptype)]
+    
+    
 
+  
     return doctors_state_plus
 
 
 def createTable(state: str, filtered_set):
     """
-        Creates a table with specific columns and sorting.
+    Constructs a table from the provided DataFrame, containing details about doctor's practice state and
+    the corresponding actions taken against them, along with certain features like the order in which the 
+    state has taken disciplinary action, occurrence counts for state disciplinary actions, and their total actions.
 
-        Args:
-            state (str): The state to use in the 'state_order' column.
-            filtered_set (pd.DataFrame): The filtered dataframe to create the table from.
+    The function involves the following steps:
 
-        Returns:
-            pd.DataFrame: The created table.
-        """
+    1. Create 'state', 'year', 'numbering' and 'state_order' columns in the dataframe.
+    2. Sort and group the dataframe based on 'PRACTNUM' and 'year'.
+    3. Filter out rows where 'PRACTNUM' appears more than once.
+    4. Filter out rows where all 'state' values for a 'PRACTNUM' are from the specified state.
+    5. Create a 'total_actions' column and sort the dataframe again.
+
+    Args:
+        state (str): The target state for which the disciplinary actions are being tracked.
+        filtered_set (pd.DataFrame): The source dataframe containing doctor's records.
+
+    Returns:
+        pd.DataFrame: A dataframe containing processed information about disciplinary actions.
+    """
 
     # Creating 'state' column
     doctors_state_first = filtered_set.copy()
@@ -160,15 +206,17 @@ def createTable(state: str, filtered_set):
     return doctors_state_first
 
 
-def occurenceCount(df_table):
-    """Count the occurrences of how many doctors had state licensure violations in the
-    specified state first or not in another state then came to the specified state first.
+def practitionerOccurence(df_table):
+    """
+    Counts the occurrences of each type of 'state_order' in the provided dataframe. The 'state_order' indicates 
+    if a doctor had their first state licensure violation in the specified state, or had a violation in another 
+    state before coming to the specified state.
 
     Args:
-        df_table (pd.DataFrame): The table to count occurrences in.
+        df_table (pd.DataFrame): The dataframe containing 'state_order' details for each doctor.
 
     Returns:
-        pd.Series: The counts of each state order
+        pd.Series: A series object with the count of occurrences for each 'state_order' type.
     """
     counts = df_table['state_order'].value_counts()
     return counts
@@ -185,6 +233,9 @@ if __name__ == '__main__':
     # State licensure actions are defined in our data file as - 301, 302
     reptype = [301, 302]
 
+    basis = '39'
+    
+
     for i in states:
         if i == "OR":
             print(f"THIS IS OREGON'S DATA:\n")
@@ -192,15 +243,18 @@ if __name__ == '__main__':
             print(f"THIS IS WASHINGTON'S DATA:\n")
         else:
             print(f"THIS IS IDAHO'S DATA:\n")
-        dataset = initialdFFilter(i, df, practitioners, reptype)
-        print(f"{set(dataset)}\n")
+        dataset = initialPractitionerFilter(i, df, practitioners, reptype, basis)
+        # print(f"{set(dataset)}\n") commented out to just sshow dataframe
 
-        set_filter = filterSet(df, dataset, reptype)
+        set_filter = filterData(df, dataset, reptype, basis)
         print(f"{set_filter}\n")
         
 
         final_table = createTable(i, set_filter)
         print(f"{final_table}\n")
-
-        count = occurenceCount(final_table)
+        
+        count = practitionerOccurence(final_table)
         print(f"{count}\n")
+
+        
+
